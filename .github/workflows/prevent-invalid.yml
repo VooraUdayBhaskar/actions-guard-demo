@@ -1,26 +1,41 @@
 name: Prevent Invalid Commits
+
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
+
 jobs:
   validate-commit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Check commit message
+        with:
+          fetch-depth: 0  # we need history to diff against main
+
+      # For PRs, make sure we have the latest main to diff against
+      - name: Fetch main
         run: |
-          echo "Checking commit message..."
-          if git log -1 --pretty=%B | grep -q "WIP"; then
+          git fetch origin main
+
+      - name: Check PR commits for WIP
+        run: |
+          echo "Checking PR commits for WIP..."
+          # Look at all commit messages that are on this PR branch and not on main
+          if git log origin/main..HEAD --pretty=%B | grep -qi "WIP"; then
             echo "❌ WIP commits are not allowed on main!"
             exit 1
           fi
-      - name: Run validation script
+          echo "✅ No WIP found in PR commits."
+
+      - name: Check forbidden file changes
         run: |
-          echo "Running path checks..."
-          if git diff --name-only HEAD~1 | grep -q "^config/secrets.yml$"; then
-            echo "❌ Direct modification of secrets.yml is not allowed!"
+          echo "Checking PR for forbidden file changes..."
+          # List every file changed in this PR vs main
+          if git diff --name-only origin/main..HEAD | grep -q '^config/secrets.yml$'; then
+            echo "❌ Direct modification of config/secrets.yml is not allowed!"
             exit 1
           fi
+          echo "✅ No forbidden file changes detected."
